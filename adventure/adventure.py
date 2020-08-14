@@ -8,6 +8,7 @@ import random
 import re
 import time
 from collections import namedtuple
+from copy import copy
 from datetime import date, datetime, timedelta
 from operator import itemgetter
 from types import SimpleNamespace
@@ -351,6 +352,7 @@ class Adventure(commands.Cog):
             "rebirth_cost": 100.0,
             "disallow_withdraw": True,
             "max_allowed_withdraw": 50000,
+            "log_channels": {"private": None, "public": None},
         }
         default_global = {
             "god_name": _("Herbert"),
@@ -4538,6 +4540,10 @@ class Adventure(commands.Cog):
             # Only let the bot owner specify a specific challenge
             challenge = None
 
+        # Log message
+        await self.send_log(ctx, f"Starting adventure on: {str(datetime.now())}\n")
+        await self.send_log(ctx, f"Starting adventure on: {str(datetime.now())}\n", True)
+
         adventure_msg = _("You feel adventurous, **{}**?").format(self.escape(ctx.author.display_name))
         try:
             reward, participants = await self._simple(ctx, adventure_msg, challenge)
@@ -5102,6 +5108,7 @@ class Adventure(commands.Cog):
     async def _result(self, ctx: Context, message: discord.Message):
         if ctx.guild.id not in self._sessions:
             return
+        log_msg = ""
         calc_msg = await ctx.send(_("Calculating..."))
         attack = 0
         diplomacy = 0
@@ -5281,8 +5288,10 @@ class Adventure(commands.Cog):
                         repair_list.append([user, loss])
                         if c.bal > loss:
                             await bank.withdraw_credits(user, loss)
+                            log_msg += f"{user.mention} lost {humanize_number(loss)} credits.\n"
                         else:
                             await bank.set_balance(user, 0)
+                            log_msg += f"{user.mention} lost all their credits.\n"
                 c.adventures.update({"loses": c.adventures.get("loses", 0) + 1})
                 c.weekly_score.update({"adventures": c.weekly_score.get("adventures", 0) + 1})
                 await self.config.user(user).set(await c.to_json(self.config))
@@ -5331,8 +5340,10 @@ class Adventure(commands.Cog):
                         repair_list.append([user, loss])
                         if c.bal > loss:
                             await bank.withdraw_credits(user, loss)
+                            log_msg += f"{user.mention} lost {humanize_number(loss)} credits.\n"
                         else:
                             await bank.set_balance(user, 0)
+                            log_msg += f"{user.mention} lost all their credits.\n"
             loss_list = []
             if len(repair_list) > 0:
                 temp_repair = []
@@ -5406,8 +5417,10 @@ class Adventure(commands.Cog):
                             repair_list.append([user, loss])
                             if c.bal > loss:
                                 await bank.withdraw_credits(user, loss)
+                                log_msg += f"{user.mention} lost {humanize_number(loss)} credits.\n"
                             else:
                                 await bank.set_balance(user, 0)
+                                log_msg += f"{user.mention} lost all their credits.\n"
                 loss_list = []
                 if len(repair_list) > 0:
                     temp_repair = []
@@ -5566,8 +5579,10 @@ class Adventure(commands.Cog):
                             repair_list.append([user, loss])
                             if c.bal > loss:
                                 await bank.withdraw_credits(user, loss)
+                                log_msg += f"{user.mention} lost {humanize_number(loss)} credits.\n"
                             else:
                                 await bank.set_balance(user, 0)
+                                log_msg += f"{user.mention} lost all their credits.\n"
                 if run_list:
                     users = run_list
                     for user in users:
@@ -5594,8 +5609,10 @@ class Adventure(commands.Cog):
                                 if user not in [u for u, t in repair_list]:
                                     if c.bal > loss:
                                         await bank.withdraw_credits(user, loss)
+                                        log_msg += f"{user.mention} lost {humanize_number(loss)} credits.\n"
                                     else:
                                         await bank.set_balance(user, 0)
+                                        log_msg += f"{user.mention} lost all their credits.\n"
                 loss_list = []
                 if len(repair_list) > 0:
                     temp_repair = []
@@ -5616,6 +5633,8 @@ class Adventure(commands.Cog):
                     _("You tried your best, but couldn't succeed.\n{}").format(repair_text),
                 ]
                 text = random.choice(options)
+
+        await self.send_log(ctx, log_msg)
 
         output = f"{result_msg}\n{text}"
         output = pagify(output, page_length=1900)
@@ -6626,6 +6645,7 @@ class Adventure(commands.Cog):
         newcp = 0
         rewards_list = []
         phrase = ""
+        log_msg = ""
         async for user in AsyncIter(userlist):
             self._rewards[user.id] = {}
             try:
@@ -6667,6 +6687,12 @@ class Adventure(commands.Cog):
             else:
                 self._rewards[user.id]["special"] = False
             rewards_list.append(f"**{self.escape(user.display_name)}**")
+            log_msg += (
+                f'{user.mention} got {humanize_number(self._rewards[user.id]["cp"])} credits '
+                f'and {humanize_number(self._rewards[user.id]["xp"])} exp. points.\n'
+            )
+
+        await self.send_log(ctx, log_msg)
 
         currency_name = await bank.get_currency_name(ctx.guild,)
         to_reward = " and ".join(
@@ -7333,3 +7359,49 @@ class Adventure(commands.Cog):
                 name=await bank.get_currency_name(ctx.guild),
             ),
         )
+
+    @commands.group(autohelp=False)
+    @commands.guild_only()
+    @commands.is_owner()
+    async def setadventurelog(self, ctx):
+        if ctx.invoked_subcommand is None:
+            async with self.config.guild(ctx.guild).log_channels() as d:
+                public_channel = self.bot.get_channel(d["public"])
+                if public_channel is not None:
+                    public_channel = public_channel.mention
+                private_channel = self.bot.get_channel(d["private"])
+                if private_channel is not None:
+                    private_channel = private_channel.mention
+                message = f"Public channel is {public_channel}\nPrivate channel is {private_channel}."
+            await smart_embed(ctx, message)
+
+    @setadventurelog.command(name="private")
+    async def setadventurelog_private(self, ctx, channel: discord.TextChannel):
+        async with self.config.guild(ctx.guild).log_channels() as d:
+            d["private"] = channel.id
+        await ctx.tick()
+
+    @setadventurelog.command(name="public")
+    async def setadventurelog_public(self, ctx, channel: discord.TextChannel):
+        async with self.config.guild(ctx.guild).log_channels() as d:
+            d["public"] = channel.id
+        await ctx.tick()
+
+    async def send_log(self, ctx, message, private: bool = False, success=None):
+        log_channels = await self.config.guild(ctx.guild).log_channels()
+        private_channel = log_channels["private"]
+        public_channel = log_channels["public"]
+        if not private_channel or not public_channel:
+            log.info("Log channel not setup.")
+            return
+        if private:
+            channel = await self.bot.fetch_channel(private_channel)
+        else:
+            channel = await self.bot.fetch_channel(public_channel)
+        if not private_channel or not public_channel:
+            log.info("Log channel is invalid.")
+            return
+        new_ctx = copy(ctx)
+        new_ctx.channel = channel
+        if channel and message:
+            await smart_embed(new_ctx, message, success)
