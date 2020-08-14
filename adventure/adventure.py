@@ -988,7 +988,7 @@ class Adventure(commands.Cog):
             except Exception as exc:
                 log.exception("Error with the new character sheet", exc_info=exc)
                 return
-
+            
             try:
                 item = character.backpack[backpack_item.name]
             except KeyError:
@@ -6645,7 +6645,7 @@ class Adventure(commands.Cog):
         newcp = 0
         rewards_list = []
         phrase = ""
-        log_msg = ""
+        log_msg = f"Base amount: {amount}"
         async for user in AsyncIter(userlist):
             self._rewards[user.id] = {}
             try:
@@ -7405,3 +7405,53 @@ class Adventure(commands.Cog):
         new_ctx.channel = channel
         if channel and message:
             await smart_embed(new_ctx, message, success)
+              
+    @_backpack.command(name="disassembleall")
+    async def backpack_disassembleall(self, ctx: Context):
+        """
+        Disassemble a set item from your backpack.
+        This will provide a chance for a chest,
+        or the item might break while you are handling it...
+        """
+        if self.in_adventure(ctx):
+            return await smart_embed(
+                ctx, _("You tried to disassemble an item but the monster ahead of you commands your attention."),
+            )
+        async with self.get_lock(ctx.author):
+            try:
+                character = await Character.from_json(self.config, ctx.author, self._daily_bonus)
+            except Exception as exc:
+                log.exception("Error with the new character sheet", exc_info=exc)
+                return
+            chests_obtained = 0
+            items_disassembled = 0
+            failed = 0
+            for item_name in list(character.backpack.keys()):
+                item = character.backpack[item_name]
+                if item.rarity != "set":
+                    continue
+                while item.owned > 0:                
+                    if character.heroclass["name"] != "Tinkerer":
+                        roll = random.randint(0, 1)
+                    else:
+                        roll = random.randint(0, 3)
+
+                    if roll == 0:
+                        item.owned -= 1
+                        items_disassembled += 1
+                        if item.owned <= 0:
+                            del character.backpack[item.name]
+                        failed += 1
+                    else:
+                        item.owned -= 1
+                        items_disassembled += 1
+                        if item.owned <= 0:
+                            del character.backpack[item.name]
+                        character.treasure[3] += roll
+                        chests_obtained += roll
+            await self.config.user(ctx.author).set(await character.to_json(self.config))
+            message = f"You disassembled {items_disassembled} set items and obtained {chests_obtained} legendary chests. {failed} items blew up while disassembling."
+            return await smart_embed(
+                ctx,
+                message
+            )
