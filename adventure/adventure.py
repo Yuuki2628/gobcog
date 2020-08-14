@@ -97,7 +97,7 @@ async def smart_embed(ctx, message, success=None):
 
 def check_global_setting_admin():
     """
-    Command decorator. If the bank is not global, it checks if the author is 
+    Command decorator. If the bank is not global, it checks if the author is
     either a bot admin or has the manage_guild permission.
     """
 
@@ -988,7 +988,7 @@ class Adventure(commands.Cog):
             except Exception as exc:
                 log.exception("Error with the new character sheet", exc_info=exc)
                 return
-            
+
             try:
                 item = character.backpack[backpack_item.name]
             except KeyError:
@@ -7405,7 +7405,7 @@ class Adventure(commands.Cog):
         new_ctx.channel = channel
         if channel and message:
             await smart_embed(new_ctx, message, success)
-              
+
     @_backpack.command(name="disassembleall")
     async def backpack_disassembleall(self, ctx: Context):
         """
@@ -7430,7 +7430,7 @@ class Adventure(commands.Cog):
                 item = character.backpack[item_name]
                 if item.rarity != "set":
                     continue
-                while item.owned > 0:                
+                while item.owned > 0:
                     if character.heroclass["name"] != "Tinkerer":
                         roll = random.randint(0, 1)
                     else:
@@ -7451,7 +7451,4 @@ class Adventure(commands.Cog):
                         chests_obtained += roll
             await self.config.user(ctx.author).set(await character.to_json(self.config))
             message = f"You disassembled {items_disassembled} set items and obtained {chests_obtained} legendary chests. {failed} items blew up while disassembling."
-            return await smart_embed(
-                ctx,
-                message
-            )
+            return await smart_embed(ctx, message)
