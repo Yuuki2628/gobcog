@@ -6645,7 +6645,7 @@ class Adventure(commands.Cog):
         newcp = 0
         rewards_list = []
         phrase = ""
-        log_msg = f"Base amount: {amount}"
+        log_msg = f"Base amount: {amount}\n"
         async for user in AsyncIter(userlist):
             self._rewards[user.id] = {}
             try:
@@ -7413,6 +7413,7 @@ class Adventure(commands.Cog):
         This will provide a chance for a chest,
         or the item might break while you are handling it...
         """
+        return
         if self.in_adventure(ctx):
             return await smart_embed(
                 ctx, _("You tried to disassemble an item but the monster ahead of you commands your attention."),
