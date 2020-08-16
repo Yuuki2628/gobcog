@@ -4610,8 +4610,20 @@ class Adventure(commands.Cog):
         except Exception as exc:
             log.exception("Error with the new character sheet", exc_info=exc)
             return
+        log_msg = "Selecting a monster:\n"
         possible_monsters = []
         stat_range = self._adv_results.get_stat_range(ctx)
+        log_msg += f"Stat range is: {str(stat_range)}\n"
+        if stat_range["max_stat"] > 0:
+            log_msg += (
+                f"Appropriate range is between {str(stat_range['min_stat'] * 0.75)} "
+                f"and {str(stat_range['max_stat'] * 1.2)} for {stat_range['stat_type']}\n"
+            )
+        else:
+            log_msg += (
+                f"Stat_range is not defined. Appropriate range is: less than {max(c.att, c.int, c.cha) * 5} "
+                f"for {stat_range['stat_type']}\n"
+            )
         async for (e, (m, stats)) in AsyncIter(monsters.items()).enumerate(start=1):
             appropriate_range = max(stats["hp"], stats["dipl"]) <= (max(c.att, c.int, c.cha) * 5)
             if stat_range["max_stat"] > 0:
@@ -4631,9 +4643,21 @@ class Adventure(commands.Cog):
                 possible_monsters.append(m)
 
         if len(possible_monsters) == 0:
+            log_msg += "No monsters found so selecting a monster randomly.\n"
             choice = random.choice(list(monsters.keys()) * 3)
         else:
             choice = random.choice(possible_monsters)
+        log_msg += (
+            f"Selected monster: {choice} with base stats :"
+            f"{monsters[choice]['hp'] if (stat_range['stat_type'] == 'attack') else monsters[choice]['dipl']} "
+            f"for {stat_range['stat_type']}\n"
+        )
+        log_msg += (
+            f"and\n"
+            f"{monsters[choice]['hp'] if (stat_range['stat_type'] == 'dipl') else monsters[choice]['hp']} for \n"
+            f"{'talk' if (stat_range['stat_type'] == 'attack') else 'attack'}"
+        )
+        await self.send_log(ctx, log_msg, True)
         return choice
 
     def _dynamic_monster_stats(self, ctx: Context, choice: MutableMapping):
@@ -4742,7 +4766,8 @@ class Adventure(commands.Cog):
         monster_roster, monster_stats, transcended = await self.update_monster_roster(ctx.author)
         if not challenge or challenge not in monster_roster:
             challenge = await self.get_challenge(ctx, monster_roster)
-
+        else:
+            await self.send_log(ctx, f"Administratively summoned {challenge} by {ctx.author.mention}", True)
         if attribute and attribute.lower() in self.ATTRIBS:
             attribute = attribute.lower()
         else:
@@ -4964,6 +4989,14 @@ class Adventure(commands.Cog):
                 if guild.id in self._adventure_countdown:
                     (timer, done, sremain) = self._adventure_countdown[guild.id]
                     if sremain > 3:
+                        adventure_obj = self._sessions[guild.id]
+                        link = adventure_obj.message.jump_url
+                        channel = reaction.message.channel
+                        log_msg = (
+                            f"{user.mention} has answered the {channel.mention} call to arms using {reaction}. "
+                            f"Lets kill [{adventure_obj.challenge}]({link})."
+                        )
+                        await self.send_log(reaction.message, log_msg, False, True)
                         await self._handle_adventure(reaction, user)
         if guild.id in self._current_traders:
             if reaction.message.id == self._current_traders[guild.id]["msg"] and not self.in_adventure(user=user):
@@ -5155,6 +5188,17 @@ class Adventure(commands.Cog):
         challenge_attrib = session.attribute
         hp = int(session.monster_modified_stats["hp"] * self.ATTRIBS[challenge_attrib][0] * session.monster_stats)
         dipl = int(session.monster_modified_stats["dipl"] * self.ATTRIBS[challenge_attrib][1] * session.monster_stats)
+
+        log_msg += "Calculating stats:\n"
+        log_msg += (
+            "Monster attack hp is "
+            f"{session.monster_modified_stats['hp']} * {self.ATTRIBS[challenge_attrib][0]} * {session.monster_stats} = {hp} "
+            f"using base_stat * attribute value * session stats.\n"
+            f"Monster talk hp is "
+            f"{session.monster_modified_stats['dipl']} * {self.ATTRIBS[challenge_attrib][1]} * {session.monster_stats} = {dipl}\n"
+        )
+        await self.send_log(ctx, log_msg, True)
+        log_msg = ""
 
         dmg_dealt = int(attack + magic)
         diplomacy = int(diplomacy)
@@ -7391,20 +7435,27 @@ class Adventure(commands.Cog):
         log_channels = await self.config.guild(ctx.guild).log_channels()
         private_channel = log_channels["private"]
         public_channel = log_channels["public"]
-        if not private_channel or not public_channel:
-            log.info("Log channel not setup.")
+        if private and private_channel is None:
+            log.info("Private log channel not setup.")
             return
-        if private:
-            channel = await self.bot.fetch_channel(private_channel)
-        else:
-            channel = await self.bot.fetch_channel(public_channel)
-        if not private_channel or not public_channel:
-            log.info("Log channel is invalid.")
+        elif public_channel is None:
+            log.info("Public log channel not setup.")
             return
-        new_ctx = copy(ctx)
-        new_ctx.channel = channel
-        if channel and message:
-            await smart_embed(new_ctx, message, success)
+        try:
+            channel = await self.bot.fetch_channel(private_channel if private else public_channel)
+            if channel and message:
+                if success is True:
+                    colour = discord.Colour.dark_green()
+                elif success is False:
+                    colour = discord.Colour.dark_red()
+                else:
+                    colour = await ctx.embed_colour()
+
+                await channel.send(embed=discord.Embed(description=message, color=colour))
+        except Exception as e:
+            log.error(
+                f"Exception {e} raised while sending logs to channel #{private_channel if private else public_channel}."
+            )
 
     @_backpack.command(name="disassembleall")
     async def backpack_disassembleall(self, ctx: Context):
@@ -7451,5 +7502,8 @@ class Adventure(commands.Cog):
                         character.treasure[3] += roll
                         chests_obtained += roll
             await self.config.user(ctx.author).set(await character.to_json(self.config))
-            message = f"You disassembled {items_disassembled} set items and obtained {chests_obtained} legendary chests. {failed} items blew up while disassembling."
+            message = (
+                f"You disassembled {items_disassembled} set items and obtained {chests_obtained} legendary chests."
+                f"{failed} items blew up while disassembling."
+            )
             return await smart_embed(ctx, message)
