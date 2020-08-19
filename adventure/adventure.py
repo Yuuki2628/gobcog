@@ -4654,8 +4654,9 @@ class Adventure(commands.Cog):
         )
         log_msg += (
             f"and\n"
-            f"{monsters[choice]['hp'] if (stat_range['stat_type'] == 'dipl') else monsters[choice]['dipl']} for \n"
-            f"{'dipl' if (stat_range['stat_type'] == 'hp') else 'hp'}"
+            f"{monsters[choice]['dipl'] if (stat_range['stat_type'] == 'hp') else monsters[choice]['hp']} for \n"
+            f"{'dipl' if (stat_range['stat_type'] == 'hp') else 'hp'} and defenses "
+            f"{monsters[choice]['pdef']}, {monsters[choice]['mdef']}"
         )
         await self.send_log(ctx, log_msg, True)
         return choice
