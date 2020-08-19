@@ -4649,13 +4649,13 @@ class Adventure(commands.Cog):
             choice = random.choice(possible_monsters)
         log_msg += (
             f"Selected monster: {choice} with base stats :"
-            f"{monsters[choice]['hp'] if (stat_range['stat_type'] == 'attack') else monsters[choice]['dipl']} "
+            f"{monsters[choice]['hp'] if (stat_range['stat_type'] == 'hp') else monsters[choice]['dipl']} "
             f"for {stat_range['stat_type']}\n"
         )
         log_msg += (
             f"and\n"
             f"{monsters[choice]['hp'] if (stat_range['stat_type'] == 'dipl') else monsters[choice]['dipl']} for \n"
-            f"{'talk' if (stat_range['stat_type'] == 'attack') else 'attack'}"
+            f"{'dipl' if (stat_range['stat_type'] == 'hp') else 'hp'}"
         )
         await self.send_log(ctx, log_msg, True)
         return choice
