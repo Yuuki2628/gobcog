@@ -8231,7 +8231,7 @@ class Adventure(commands.Cog):
     async def commands_atransfer_deposit(self, ctx: commands.Context, *, amount: int):
         """Convert bank currency to gold."""
         if ctx.guild.id not in deposit_allowed:
-            return await ctx.send("You are not allowed to transfer credits.")
+            return await smart_embed(ctx, "You are not allowed to transfer credits in this server.")
         from_conversion_rate = await self.config.to_conversion_rate()
         transferable_amount = amount * from_conversion_rate
         if amount <= 0:
