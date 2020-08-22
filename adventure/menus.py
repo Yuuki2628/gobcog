@@ -119,7 +119,7 @@ class WeeklyScoreboardSource(menus.ListPageSource):
                     username = user_id
                 else:
                     username = user.name
-
+            username = escape(str(username), formatting=True)
             if user_id == author.id:
                 # Highlight the author's position
                 username = f"<<{username}>>"
@@ -189,7 +189,7 @@ class ScoreboardSource(WeeklyScoreboardSource):
                     username = user_id
                 else:
                     username = user.name
-
+            username = escape(str(username), formatting=True)
             if user_id == author.id:
                 # Highlight the author's position
                 username = f"<<{username}>>"
@@ -208,6 +208,72 @@ class ScoreboardSource(WeeklyScoreboardSource):
         )
         embed.set_footer(text=f"Page {menu.current_page + 1}/{self.get_max_pages()}")
         return {"embed": embed, "content": self._legend}
+
+
+class NVScoreboardSource(WeeklyScoreboardSource):
+    def __init__(self, entries: List[Tuple[int, Dict]], stat: Optional[str] = None):
+        super().__init__(entries)
+
+    async def format_page(self, menu: menus.MenuPages, entries: List[Tuple[int, Dict]]):
+        ctx = menu.ctx
+        loses_len = max(len(humanize_number(entries[0][1]["loses"])) + 3, 8)
+        win_len = max(len(humanize_number(entries[0][1]["wins"])) + 3, 6)
+        xp__len = max(len(humanize_number(entries[0][1]["xp__earnings"])) + 3, 8)
+        gold__len = max(len(humanize_number(entries[0][1]["gold__losses"])) + 3, 12)
+        start_position = (menu.current_page * self.per_page) + 1
+        pos_len = len(str(start_position + 9)) + 2
+        header = (
+            f"{'#':{pos_len}}{'Wins':{win_len}}"
+            f"{'Losses':{loses_len}}{'XP Won':{xp__len}}{'Gold Spent':{gold__len}}{'Adventurer':2}"
+        )
+
+        author = ctx.author
+
+        if getattr(ctx, "guild", None):
+            guild = ctx.guild
+        else:
+            guild = None
+
+        players = []
+        for (position, (user_id, account_data)) in enumerate(entries, start=start_position):
+            if guild is not None:
+                member = guild.get_member(user_id)
+            else:
+                member = None
+
+            if member is not None:
+                username = member.display_name
+            else:
+                user = menu.ctx.bot.get_user(user_id)
+                if user is None:
+                    username = user_id
+                else:
+                    username = user.name
+
+            username = escape(str(username), formatting=True)
+            if user_id == author.id:
+                # Highlight the author's position
+                username = f"<<{username}>>"
+
+            pos_str = position
+            loses = humanize_number(account_data["loses"])
+            wins = humanize_number(account_data["wins"])
+            xp__earnings = humanize_number(account_data["xp__earnings"])
+            gold__losses = humanize_number(account_data["gold__losses"])
+
+            data = (
+                f"{f'{pos_str}.':{pos_len}}"
+                f"{wins:{win_len}}"
+                f"{loses:{loses_len}}"
+                f"{xp__earnings:{xp__len}}"
+                f"{gold__losses:{gold__len}}"
+                f"{username}"
+            )
+            players.append(data)
+        msg = "Adventure Negaverse Scoreboard\n```md\n{}``` ```md\n{}``````md\n{}```".format(
+            header, "\n".join(players), f"Page {menu.current_page + 1}/{self.get_max_pages()}"
+        )
+        return msg
 
 
 class EconomySource(menus.ListPageSource):
@@ -274,15 +340,24 @@ class EconomySource(menus.ListPageSource):
                     f"{balance: <{bal_len + 5}} "
                     f"<<{username}>>\n"
                 )
-        embed = discord.Embed(
-            title="Adventure Economy Leaderboard\nYou are currently # {}/{}".format(
-                self.author_position, len(self.entries)
-            ),
-            color=await menu.ctx.embed_color(),
-            description="```md\n{}``` ```md\n{}``` ```py\nTotal bank amount {}\nYou have {}% of the total amount!```".format(
-                header_primary, header, humanize_number(_total_balance), percent
-            ),
-        )
+        if self.author_position is not None:
+            embed = discord.Embed(
+                title="Adventure Economy Leaderboard\nYou are currently # {}/{}".format(
+                    self.author_position, len(self.entries)
+                ),
+                color=await menu.ctx.embed_color(),
+                description="```md\n{}``` ```md\n{}``` ```py\nTotal bank amount {}\nYou have {}% of the total amount!```".format(
+                    header_primary, header, humanize_number(_total_balance), percent
+                ),
+            )
+        else:
+            embed = discord.Embed(
+                title="Adventure Economy Leaderboard\n",
+                color=await menu.ctx.embed_color(),
+                description="```md\n{}``` ```md\n{}``` ```py\nTotal bank amount {}\nYou have {}% of the total amount!```".format(
+                    header_primary, header, humanize_number(_total_balance), percent
+                ),
+            )
         embed.set_footer(text=f"Page {menu.current_page + 1}/{self.get_max_pages()}")
 
         return embed

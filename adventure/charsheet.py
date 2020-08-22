@@ -1,21 +1,28 @@
 # -*- coding: utf-8 -*-
+from __future__ import annotations
+
+import argparse
 import asyncio
 import logging
 import random
 import re
+import shlex
+from collections import defaultdict
 from copy import copy
 from datetime import date, datetime, timedelta
 from string import ascii_letters, digits
-from typing import Dict, List, Mapping, MutableMapping, Optional, Set, Tuple
+from typing import Any, Dict, List, Mapping, MutableMapping, Optional, Set, Tuple, Union
 
 import discord
+from beautifultable import ALIGN_LEFT, BeautifulTable
 from discord.ext.commands import check
 from discord.ext.commands.converter import Converter
 from discord.ext.commands.errors import BadArgument
 from redbot.core import Config, commands
+from redbot.core.commands import UserFeedbackCheckFailure
 from redbot.core.i18n import Translator
 from redbot.core.utils import AsyncIter
-from redbot.core.utils.chat_formatting import box, humanize_number
+from redbot.core.utils.chat_formatting import box, escape, humanize_number
 from redbot.core.utils.menus import start_adding_reactions
 from redbot.core.utils.predicates import ReactionPredicate
 
@@ -100,6 +107,15 @@ _DAY_MAPPING = {
     "saturday": "6",
     "sunday": "7",
 }
+ARG_OP_REGEX = re.compile(r"(?P<op>>|<)?(?P<value>-?\d+)")
+
+
+class ArgParserFailure(UserFeedbackCheckFailure):
+    """Raised when parsing an argument fails."""
+
+    def __init__(self, cmd: str, message: str):
+        self.cmd = cmd
+        super().__init__(message=message)
 
 
 class Stats(Converter):
@@ -405,8 +421,12 @@ class GameSession:
     run: List[discord.Member] = []
     message: discord.Message = None
     transcended: bool = False
-    insight = (0, None)
+    insight: Tuple[float, Character] = (0, None)
     start_time: datetime = datetime.now()
+    easy_mode: bool = False
+    insight = (0, None)
+    no_monster: bool = False
+    exposed: bool = False
 
     def __init__(self, **kwargs):
         self.challenge: str = kwargs.pop("challenge")
@@ -430,6 +450,8 @@ class GameSession:
         self.run: List[discord.Member] = []
         self.transcended: bool = kwargs.pop("transcended", False)
         self.start_time = datetime.now()
+        self.easy_mode = kwargs.get("easy_mode", False)
+        self.no_monster = kwargs.get("no_monster", False)
 
 
 class Character(Item):
@@ -486,6 +508,7 @@ class Character(Item):
         self.total_stats = self.total_att + self.total_int + self.total_cha + self.dex + self.luck
         self.remove_restrictions()
         self.adventures: dict = kwargs.pop("adventures")
+        self.nega: dict = kwargs.pop("nega")
         self.weekly_score: dict = kwargs.pop("weekly_score")
         self.pieces_to_keep: dict = {
             "head": {},
@@ -529,7 +552,7 @@ class Character(Item):
         rebirths = copy(self.rebirths)
         extrapoints += rebirths // 10 * 5
 
-        for rc in range(rebirths):
+        for _loop_counter in range(rebirths):
             if rebirths >= 30:
                 extrapoints += 3
             elif rebirths >= 20:
@@ -556,6 +579,35 @@ class Character(Item):
             int(stats * self.gear_set_bonus.get("statmult", 1)) + self.gear_set_bonus.get(stat, 0),
             stats,
         )
+
+    async def get_set_count(self, return_items: bool = False, set_name: str = None):
+        set_names = {}
+        returnable_items = []
+        item_names = set()
+        async for item in AsyncIter(self.backpack, steps=100):
+            item = self.backpack[item]
+            if item.rarity != "set":
+                continue
+            if item.name in item_names:
+                continue
+            if set_name and set_name != item.set:
+                continue
+            if item.set and item.set not in set_names:
+                returnable_items.append(item)
+                item_names.add(item.name)
+                set_names.update({item.set: (item.parts, 1)})
+            elif item.set and item.set in set_names:
+                returnable_items.append(item)
+                item_names.add(item.name)
+                parts, count = set_names[item.set]
+                set_names[item.set] = (parts, count + 1)
+        if return_items:
+            return returnable_items
+        for set_name in SET_BONUSES:
+            if set_name in set_names:
+                continue
+            set_names[set_name] = (max(bonus["parts"] for bonus in SET_BONUSES[set_name]), 0)
+        return set_names
 
     def get_set_bonus(self):
         set_names = {}
@@ -587,9 +639,10 @@ class Character(Item):
                 added.append(item.name)
                 parts, count, bonus = set_names[item.set]
                 set_names[item.set] = (parts, count + 1, bonus)
-        valid_sets = [(s, v[1]) for s, v in set_names.items() if v[1] >= v[0]]
-        self.sets = [s for s, _ in valid_sets if s]
-        for (_set, parts) in valid_sets:
+        full_sets = [(s, v[1]) for s, v in set_names.items() if v[1] >= v[0]]
+        partial_sets = [(s, v[1]) for s, v in set_names.items()]
+        self.sets = [s for s, _ in full_sets if s]
+        for (_set, parts) in partial_sets:
             set_bonuses = SET_BONUSES.get(_set, [])
             for bonus in set_bonuses:
                 required_parts = bonus.get("parts", 100)
@@ -630,7 +683,7 @@ class Character(Item):
         else:
             class_desc = _("Hero.")
 
-        daymult = self.daily_bonus.get(str(datetime.today().weekday()), 0)
+        daymult = self.daily_bonus.get(str(datetime.today().isoweekday()), 0)
         statmult = self.gear_set_bonus.get("statmult") - 1
         xpmult = (self.gear_set_bonus.get("xpmult") + daymult) - 1
         cpmult = (self.gear_set_bonus.get("cpmult") + daymult) - 1
@@ -643,7 +696,8 @@ class Character(Item):
             "CHARISMA: {cha} [+{cha_skill}] - "
             "INTELLIGENCE: {int} [+{int_skill}]\n\n - "
             "DEXTERITY: {dex} - "
-            "LUCK: {luck} \n\n "
+            "LUCK: {luck} \n\n- "
+            "Backpack: {bp}/{bptotal} \n- "
             "Currency: {bal} \n- "
             "Experience: {xp}/{next_lvl} \n- "
             "Unspent skillpoints: {skill_points}\n\n"
@@ -681,6 +735,8 @@ class Character(Item):
                 f"Credits: {round(cpmult * 100)}%"
             ),
             daily="" if daymult == 0 else _("* Daily bonus active"),
+            bp=len(self.backpack),
+            bptotal=self.get_backpack_slots(),
         )
 
     def get_equipment(self):
@@ -750,7 +806,7 @@ class Character(Item):
         else:
             maxlevel = REBIRTH_LVL
 
-        for rc in range(rebirths):
+        for _loop_counter in range(rebirths):
             if rebirths >= 20:
                 maxlevel += REBIRTH_STEP
             elif rebirths >= 10:
@@ -761,34 +817,25 @@ class Character(Item):
         return min(maxlevel, 10000)
 
     @staticmethod
-    def get_item_rarity(item):
-        item_obj = item[1]
-        if item_obj.rarity == "event":
-            return 0
-        elif item_obj.rarity == "forged":
-            return 1
-        elif item_obj.rarity == "set":
-            return 2
-        elif item_obj.rarity == "ascended":
-            return 3
-        elif item_obj.rarity == "legendary":
-            return 4
-        elif item_obj.rarity == "epic":
-            return 5
-        elif item_obj.rarity == "rare":
-            return 6
-        elif item_obj.rarity == "normal":
-            return 7
-        else:
-            return 7  # common / normal
+    def get_slot_index(slot):
+        if slot not in ORDER:
+            return float("inf")
+        return ORDER.index(slot)
+
+    @staticmethod
+    def get_rarity_index(rarity):
+        if rarity not in RARITIES:
+            return float("inf")
+        reverse_rarities = list(reversed(RARITIES))
+        return reverse_rarities.index(rarity)
 
     async def get_sorted_backpack(self, backpack: dict, slot=None, rarity=None):
         tmp = {}
 
         def _sort(item):
-            return self.get_item_rarity(item), item[1].lvl, item[1].total_stats
+            return self.get_rarity_index(item[1].rarity), item[1].lvl, item[1].total_stats
 
-        async for item in AsyncIter(backpack, steps=5):
+        async for item in AsyncIter(backpack, steps=100):
             slots = backpack[item].slot
             slot_name = slots[0]
             if len(slots) > 1:
@@ -801,13 +848,11 @@ class Character(Item):
             if slot_name not in tmp:
                 tmp[slot_name] = []
             tmp[slot_name].append((item, backpack[item]))
-
+        slots = sorted(list(tmp.keys()), key=self.get_slot_index)
         final = []
-        async for (idx, slot_name) in AsyncIter(tmp.keys()).enumerate():
+        async for (idx, slot_name) in AsyncIter(slots, steps=100).enumerate():
             if tmp[slot_name]:
                 final.append(sorted(tmp[slot_name], key=_sort))
-
-        final.sort(key=lambda i: ORDER.index(i[0][1].slot[0]) if len(i[0][1].slot) == 1 else ORDER.index("two handed"))
         return final
 
     async def looted(self, how_many: int = 1) -> List[Tuple[str, int]]:
@@ -816,11 +861,17 @@ class Character(Item):
         looted = []
         if not items:
             return looted
+        count = 0
         while how_many > looted_so_far:
             if looted_so_far >= how_many:
                 break
+            if count >= 5:
+                break
             item = random.choice(items)
             if not bool(random.getrandbits(1)):
+                continue
+            if item.name not in self.backpack:
+                count += 1
                 continue
             loot_number = random.randint(1, min(item.owned, how_many - looted_so_far))
             looted_so_far += loot_number
@@ -846,78 +897,345 @@ class Character(Item):
         if consumed is None:
             consumed = []
         bkpk = await self.get_sorted_backpack(self.backpack, slot=slot, rarity=rarity)
-        form_string = _(
-            "Items in Backpack: \n( ATT | CHA | INT | DEX | LUCK ) | LEVEL REQ | [DEGRADE#] | OWNED | SET (SET PIECES)"
-        )
-        consumed_list = [i for i in consumed]
-        rjust = max([len(str(i[1])) + 4 for slot_group in bkpk for i in slot_group] or [1, 4])
-        async for slot_group in AsyncIter(bkpk):
+        if not forging:
+            msg = _("{author}'s backpack\n\n").format(author=escape(self.user.display_name, formatting=True))
+        else:
+            msg = _("{author}'s forgeables\n\n").format(author=escape(self.user.display_name, formatting=True))
+        msg_len = len(msg)
+        table = BeautifulTable(default_alignment=ALIGN_LEFT, maxwidth=500)
+        table.set_style(BeautifulTable.STYLE_RST)
+        tables = []
+        table.columns.header = [
+            "Name",
+            "Slot",
+            "ATT",
+            "CHA",
+            "INT",
+            "DEX",
+            "LUC",
+            "LVL",
+            "QTY",
+            "DEG",
+            "SET",
+        ]
+        consumed_list = consumed
+        remainder = False
+        async for slot_group in AsyncIter(bkpk, steps=100):
             slot_name_org = slot_group[0][1].slot
             slot_name = slot_name_org[0] if len(slot_name_org) < 2 else "two handed"
             if slot is not None and slot != slot_name:
                 continue
             if clean and not slot_group:
                 continue
-            slot_string = ""
             current_equipped = getattr(self, slot_name if slot != "two handed" else "left", None)
-            async for item in AsyncIter(slot_group):
-                if forging and (item[1].rarity in ["forged", "set"] or item[1] in consumed_list):
+            async for item_name, item in AsyncIter(slot_group, steps=100):
+                if forging and (item.rarity in ["forged", "set"] or item in consumed_list):
                     continue
-                if forging and item[1].rarity == "ascended":
+                if forging and item.rarity == "ascended":
                     if self.rebirths < 30:
                         continue
-                if rarity is not None and rarity != item[1].rarity:
+                if rarity is not None and rarity != item.rarity:
                     continue
-                if equippable and not can_equip(self, item[1]):
+                if equippable and not can_equip(self, item):
                     continue
-                if set_name is not None and set_name != item[1].set:
+                if set_name is not None and set_name != item.set:
                     continue
-                settext = ""
-                att_space = " " if len(str(item[1].att)) >= 1 else ""
-                cha_space = " " if len(str(item[1].cha)) >= 1 else ""
-                int_space = " " if len(str(item[1].int)) >= 1 else ""
-                dex_space = " " if len(str(item[1].dex)) >= 1 else ""
-                luck_space = " " if len(str(item[1].luck)) >= 1 else ""
-                owned = ""
-                if item[1].rarity in ["legendary", "event", "ascended"] and item[1].degrade >= 0:
-                    owned += f" | [{item[1].degrade}#]"
-                owned += f" | {item[1].owned}"
-                if item[1].set:
-                    settext += f" | Set `{item[1].set}` ({item[1].parts}pcs)"
-                e_level = equip_level(self, item[1])
-                if e_level > self.lvl:
-                    level = f"[{e_level}]"
-                else:
-                    level = f"{e_level}"
-
+                if len(str(table)) > 1500:
+                    remainder = False
+                    tables.append(box(msg + str(table) + f"\nPage {len(tables) + 1}", lang="css"))
+                    table = BeautifulTable(default_alignment=ALIGN_LEFT, maxwidth=500)
+                    table.set_style(BeautifulTable.STYLE_RST)
+                    table.columns.header = [
+                        "Name",
+                        "Slot",
+                        "ATT",
+                        "CHA",
+                        "INT",
+                        "DEX",
+                        "LUC",
+                        "LVL",
+                        "QTY",
+                        "DEG",
+                        "SET",
+                    ]
                 if show_delta:
-                    att = self.get_equipped_delta(current_equipped, item[1], "att")
-                    cha = self.get_equipped_delta(current_equipped, item[1], "cha")
-                    int = self.get_equipped_delta(current_equipped, item[1], "int")
-                    dex = self.get_equipped_delta(current_equipped, item[1], "dex")
-                    luck = self.get_equipped_delta(current_equipped, item[1], "luck")
-                    rjuststat = 5
+                    att = self.get_equipped_delta(current_equipped, item, "att")
+                    cha = self.get_equipped_delta(current_equipped, item, "cha")
+                    int = self.get_equipped_delta(current_equipped, item, "int")
+                    dex = self.get_equipped_delta(current_equipped, item, "dex")
+                    luck = self.get_equipped_delta(current_equipped, item, "luck")
                 else:
-                    att = item[1].att if len(slot_name_org) < 2 else item[1].att * 2
-                    cha = item[1].cha if len(slot_name_org) < 2 else item[1].cha * 2
-                    int = item[1].int if len(slot_name_org) < 2 else item[1].int * 2
-                    dex = item[1].dex if len(slot_name_org) < 2 else item[1].dex * 2
-                    luck = item[1].luck if len(slot_name_org) < 2 else item[1].luck * 2
-                    rjuststat = 3
-
-                stats = (
-                    f"({att_space}{att:<{rjuststat}} |"
-                    f"{cha_space}{cha:<{rjuststat}} |"
-                    f"{int_space}{int:<{rjuststat}} |"
-                    f"{dex_space}{dex:<{rjuststat}} |"
-                    f"{luck_space}{luck:<{rjuststat}} )"
+                    att = item.att if len(slot_name_org) < 2 else item.att * 2
+                    cha = item.cha if len(slot_name_org) < 2 else item.cha * 2
+                    int = item.int if len(slot_name_org) < 2 else item.int * 2
+                    dex = item.dex if len(slot_name_org) < 2 else item.dex * 2
+                    luck = item.luck if len(slot_name_org) < 2 else item.luck * 2
+                remainder = True
+                table.rows.append(
+                    (
+                        str(item),
+                        slot_name,
+                        att,
+                        cha,
+                        int,
+                        dex,
+                        luck,
+                        f"[{r}]" if (r := equip_level(self, item)) is not None and r > self.lvl else f"{r}",
+                        item.owned,
+                        f"[{item.degrade}]"
+                        if item.rarity in ["legendary", "event", "ascended"] and item.degrade >= 0
+                        else "N/A",
+                        item.set or "N/A",
+                    )
                 )
+        if remainder:
+            tables.append(box(msg + str(table) + f"\nPage {len(tables) + 1}", lang="css"))
+        return tables
 
-                slot_string += f"\n{str(item[1]):<{rjust}} - {stats} | Lvl {level:<5}{owned}{settext}"
-            if slot_string:
-                form_string += f"\n\n {slot_name.title()} slot\n{slot_string}"
+    async def get_sorted_backpack_arg_parse(
+        self,
+        backpack: dict,
+        slots: List[str],
+        rarities: List[str],
+        sets: List[str],
+        equippable: bool,
+        strength: MutableMapping[str, Any],
+        intelligence: MutableMapping[str, Any],
+        charisma: MutableMapping[str, Any],
+        luck: MutableMapping[str, Any],
+        dexterity: MutableMapping[str, Any],
+        level: MutableMapping[str, Any],
+        degrade: MutableMapping[str, Any],
+        ignore_case: bool,
+        match: Optional[str],
+        rarity_exclude: List[str] = None,
+    ):
+        tmp = {}
 
-        return form_string + "\n"
+        def _sort(item):
+            return self.get_rarity_index(item), item[1].lvl, item[1].total_stats
+
+        async for item_name in AsyncIter(backpack, steps=100):
+            item = backpack[item_name]
+            item_slots = item.slot
+            slot_name = item_slots[0]
+            if rarity_exclude is not None and item.rarity in rarity_exclude:
+                continue
+
+            if len(item_slots) > 1:
+                slot_name = "two handed"
+            if match:
+                actual_item_name = str(item)
+                if ignore_case:
+                    if match.lower() not in actual_item_name.lower():
+                        continue
+                elif match not in actual_item_name:
+                    continue
+            if slots and slot_name not in slots:
+                continue
+            if sets and item.rarity != "set":
+                continue
+            elif rarities and item.rarity not in rarities:
+                continue
+            if sets and item.set not in sets:
+                continue
+            e_level = equip_level(self, item)
+            if equippable and self.lvl < e_level:
+                continue
+            if degrade and item.rarity in ["legendary", "ascended", "event"]:
+                if (d := degrade.get("equal")) is not None:
+                    if item.degrade != d:
+                        continue
+                elif not degrade["min"] < item.degrade < degrade["max"]:
+                    continue
+            if level:
+                if (d := level.get("equal")) is not None:
+                    if e_level != d:
+                        continue
+                elif not level["min"] < e_level < level["max"]:
+                    continue
+            if dexterity:
+                if (d := dexterity.get("equal")) is not None:
+                    if item.dex != d:
+                        continue
+                elif not dexterity["min"] < item.dex < dexterity["max"]:
+                    continue
+            if luck:
+                if (d := luck.get("equal")) is not None:
+                    if item.luck != d:
+                        continue
+                elif not luck["min"] < item.luck < luck["max"]:
+                    continue
+            if charisma:
+                if (d := charisma.get("equal")) is not None:
+                    if item.cha != d:
+                        continue
+                elif not charisma["min"] < item.cha < charisma["max"]:
+                    continue
+            if intelligence:
+                if (d := intelligence.get("equal")) is not None:
+                    if item.int != d:
+                        continue
+                elif not intelligence["min"] < item.int < intelligence["max"]:
+                    continue
+            if strength:
+                if (d := strength.get("equal")) is not None:
+                    if item.att != d:
+                        continue
+                elif not strength["min"] < item.att <= strength["max"]:
+                    continue
+
+            if slot_name not in tmp:
+                tmp[slot_name] = []
+            tmp[slot_name].append((item_name, item))
+        slots = sorted(list(tmp.keys()), key=self.get_slot_index)
+
+        final = []
+        async for (idx, slot_name) in AsyncIter(slots, steps=100).enumerate():
+            if tmp[slot_name]:
+                final.append((slot_name, sorted(tmp[slot_name], key=_sort)))
+        return final
+
+    async def get_argparse_backpack(self, query: MutableMapping[str, Any]) -> List[str]:
+        delta = query.pop("delta", False)
+        equippable = query.pop("equippable", False)
+        sets = query.pop("set", [])
+        rarities = query.pop("rarity", [])
+        slots = query.pop("slot", [])
+        strength = query.pop("strength", {})
+        intelligence = query.pop("intelligence", {})
+        charisma = query.pop("charisma", {})
+        luck = query.pop("luck", {})
+        dexterity = query.pop("dexterity", {})
+        level = query.pop("level", {})
+        degrade = query.pop("degrade", {})
+        ignore_case = query.pop("icase", False)
+        match = query.pop("match", None)
+
+        bkpk = await self.get_sorted_backpack_arg_parse(
+            self.backpack,
+            slots=slots,
+            rarities=rarities,
+            sets=sets,
+            equippable=equippable,
+            strength=strength,
+            intelligence=intelligence,
+            charisma=charisma,
+            luck=luck,
+            dexterity=dexterity,
+            level=level,
+            degrade=degrade,
+            match=match,
+            ignore_case=ignore_case,
+        )
+
+        msg = _("{author}'s backpack\n\n").format(author=escape(self.user.display_name, formatting=True))
+        table = BeautifulTable(default_alignment=ALIGN_LEFT, maxwidth=500)
+        table.set_style(BeautifulTable.STYLE_RST)
+        tables = []
+        headers = [
+            "Name",
+            "Slot",
+            "ATT",
+            "CHA",
+            "INT",
+            "DEX",
+            "LUC",
+            "LVL",
+            "QTY",
+        ]
+        if not rarities or any(x in rarities for x in ["legendary", "event", "ascended"]):
+            headers.append("DEG")
+
+        if sets or not rarities or "set" in rarities:
+            headers.append("SET")
+
+        table.columns.header = headers
+
+        remainder = False
+        async for slot_name, slot_group in AsyncIter(bkpk, steps=100):
+            slot_name_org = slot_group[0][1].slot
+            current_equipped = getattr(self, slot_name if slot_name != "two handed" else "left", None)
+            async for item_name, item in AsyncIter(slot_group, steps=100):
+                if len(str(table)) > 1500:
+                    tables.append(box(msg + str(table) + f"\nPage {len(tables) + 1}", lang="css"))
+                    table = BeautifulTable(default_alignment=ALIGN_LEFT, maxwidth=500)
+                    table.set_style(BeautifulTable.STYLE_RST)
+                    table.columns.header = headers
+                    remainder = False
+                if delta:
+                    att = self.get_equipped_delta(current_equipped, item, "att")
+                    cha = self.get_equipped_delta(current_equipped, item, "cha")
+                    int = self.get_equipped_delta(current_equipped, item, "int")
+                    dex = self.get_equipped_delta(current_equipped, item, "dex")
+                    luck = self.get_equipped_delta(current_equipped, item, "luck")
+                else:
+                    att = item.att if len(slot_name_org) < 2 else item.att * 2
+                    cha = item.cha if len(slot_name_org) < 2 else item.cha * 2
+                    int = item.int if len(slot_name_org) < 2 else item.int * 2
+                    dex = item.dex if len(slot_name_org) < 2 else item.dex * 2
+                    luck = item.luck if len(slot_name_org) < 2 else item.luck * 2
+                data = [
+                    str(item),
+                    slot_name,
+                    att,
+                    cha,
+                    int,
+                    dex,
+                    luck,
+                    f"[{r}]" if (r := equip_level(self, item)) is not None and r > self.lvl else f"{r}",
+                    item.owned,
+                ]
+                if "DEG" in headers:
+                    data.append(
+                        f"[{item.degrade}]"
+                        if item.rarity in ["legendary", "event", "ascended"] and item.degrade >= 0
+                        else "N/A"
+                    )
+                if "SET" in headers:
+                    data.append(item.set or "N/A",)
+                table.rows.append(data)
+                remainder = True
+        if remainder:
+            tables.append(box(msg + str(table) + f"\nPage {len(tables) + 1}", lang="css"))
+        return tables
+
+    async def get_argparse_backpack_items(
+        self, query: MutableMapping[str, Any], rarity_exclude: List[str] = None
+    ) -> List[Item]:
+        delta = query.pop("delta", False)
+        equippable = query.pop("equippable", False)
+        sets = query.pop("set", [])
+        rarities = query.pop("rarity", [])
+        slots = query.pop("slot", [])
+        strength = query.pop("strength", {})
+        intelligence = query.pop("intelligence", {})
+        charisma = query.pop("charisma", {})
+        luck = query.pop("luck", {})
+        dexterity = query.pop("dexterity", {})
+        level = query.pop("level", {})
+        degrade = query.pop("degrade", {})
+        ignore_case = query.pop("icase", False)
+        match = query.pop("match", None)
+
+        bkpk = await self.get_sorted_backpack_arg_parse(
+            self.backpack,
+            slots=slots,
+            rarities=rarities,
+            sets=sets,
+            equippable=equippable,
+            strength=strength,
+            intelligence=intelligence,
+            charisma=charisma,
+            luck=luck,
+            dexterity=dexterity,
+            level=level,
+            degrade=degrade,
+            match=match,
+            ignore_case=ignore_case,
+            rarity_exclude=rarity_exclude,
+        )
+        return bkpk
 
     def get_equipped_delta(self, equiped: Item, to_compare: Item, stat_name: str) -> str:
         if (equiped and len(equiped.slot) == 2) and (to_compare and len(to_compare.slot) == 2):
@@ -957,6 +1275,17 @@ class Character(Item):
                 await self.unequip_item(current)
             setattr(self, slot, item)
         return self
+
+    def get_backpack_slots(self, is_dev: bool = False):
+        if is_dev:
+            return "N/A"
+        else:
+            return humanize_number((50 + (self.rebirths * 5)))
+
+    def is_backpack_full(self, is_dev: bool = False):
+        if is_dev:
+            return False
+        return len(self.backpack) > (50 + (self.rebirths * 5))
 
     async def add_to_backpack(self, item: Item, number: int = 1):
         if item:
@@ -1008,7 +1337,7 @@ class Character(Item):
             "charm": char.charm.to_json() if char.charm else {},
         }
 
-    def get_current_equipment(self) -> List[Item]:
+    def get_current_equipment(self, return_place_holder: bool = False) -> List[Item]:
         """returns a list of Items currently equipped."""
         equipped = []
         for slot in ORDER:
@@ -1017,6 +1346,8 @@ class Character(Item):
             item = getattr(self, slot)
             if item:
                 equipped.append(item)
+            elif return_place_holder:
+                equipped.append(get_place_holder(slot))
         return equipped
 
     async def unequip_item(self, item: Item):
@@ -1088,6 +1419,15 @@ class Character(Item):
                 "run": 0,
                 "fumbles": 0,
             }
+        if "nega" in data:
+            nega = data["nega"]
+        else:
+            nega = {
+                "wins": 0,
+                "loses": 0,
+                "xp__earnings": 0,
+                "gold__losses": 0,
+            }
         current_week = date.today().isocalendar()[1]
         if "weekly_score" in data and data["weekly_score"]["week"] >= current_week:
             weekly = data["weekly_score"]
@@ -1096,6 +1436,7 @@ class Character(Item):
 
         hero_data = {
             "adventures": adventures,
+            "nega": nega,
             "weekly_score": weekly,
             "exp": max(data["exp"], 0),
             "lvl": data["lvl"],
@@ -1154,6 +1495,7 @@ class Character(Item):
 
         return {
             "adventures": self.adventures,
+            "nega": self.nega,
             "weekly_score": self.weekly_score,
             "exp": self.exp,
             "lvl": self.lvl,
@@ -1237,6 +1579,7 @@ class Character(Item):
 
         return {
             "adventures": self.adventures,
+            "nega": self.nega,
             "weekly_score": self.weekly_score,
             "exp": 0,
             "lvl": 1,
@@ -1279,6 +1622,77 @@ class Character(Item):
             item = getattr(self, slots)
             items_to_keep[slots] = item.to_json() if self.rebirths >= 30 and item and item.set else {}
         self.pieces_to_keep = items_to_keep
+
+
+class ItemsConverter(Converter):
+    async def convert(self, ctx, argument) -> Tuple[str, List[Item]]:
+        try:
+            c = await Character.from_json(
+                ctx.bot.get_cog("Adventure").config, ctx.author, ctx.bot.get_cog("Adventure")._daily_bonus,
+            )
+        except Exception as exc:
+            log.exception("Error with the new character sheet", exc_info=exc)
+            raise BadArgument
+        try:
+            rarity = RARITY.match(argument.lower()).group(0)
+        except AttributeError:
+            rarity = None
+
+        if argument.lower() == "all":
+            rarity = True
+
+        if rarity is None:
+            no_markdown = Item.remove_markdowns(argument)
+            lookup = list(i for x, i in c.backpack.items() if no_markdown.lower() in x.lower())
+            lookup_m = list(i for x, i in c.backpack.items() if argument.lower() == str(i).lower() and str(i))
+            lookup_e = list(i for x, i in c.backpack.items() if argument == str(i))
+            _temp_items = set()
+            for i in lookup:
+                _temp_items.add(str(i))
+            for i in lookup_m:
+                _temp_items.add(str(i))
+            for i in lookup_e:
+                _temp_items.add(str(i))
+        elif rarity is True:
+            lookup = list(i for x, i in c.backpack.items())
+            return "all", lookup
+        else:
+            lookup = list(i for x, i in c.backpack.items() if i.rarity == rarity)
+            if lookup:
+                return "all", lookup
+            raise BadArgument(_("You don't own any `{}` items.").format(argument))
+
+        if len(lookup_e) == 1:
+            return "single", [lookup_e[0]]
+        if len(lookup) == 1:
+            return "single", [lookup[0]]
+        elif len(lookup_m) == 1:
+            return "single", [lookup_m[0]]
+        elif len(lookup) == 0 and len(lookup_m) == 0:
+            raise BadArgument(_("`{}` doesn't seem to match any items you own.").format(argument))
+        else:
+            lookup = list(i for x, i in c.backpack.items() if str(i) in _temp_items)
+            if len(lookup) > 10:
+                raise BadArgument(
+                    _("You have too many items matching the name `{}`, please be more specific.").format(argument)
+                )
+            items = ""
+            for (number, item) in enumerate(lookup):
+                items += f"{number}. {str(item)} (owned {item.owned})\n"
+
+            msg = await ctx.send(
+                _("Multiple items share that name, which one would you like?\n{items}").format(
+                    items=box(items, lang="css")
+                )
+            )
+            emojis = ReactionPredicate.NUMBER_EMOJIS[: len(lookup)]
+            start_adding_reactions(msg, emojis)
+            pred = ReactionPredicate.with_emojis(emojis, msg, user=ctx.author)
+            try:
+                await ctx.bot.wait_for("reaction_add", check=pred, timeout=30)
+            except asyncio.TimeoutError:
+                raise BadArgument(_("Alright then."))
+            return "single", [lookup[pred.result]]
 
 
 class ItemConverter(Converter):
@@ -1403,7 +1817,7 @@ class EquipableItemConverter(Converter):
 
 
 class EquipmentConverter(Converter):
-    async def convert(self, ctx, argument) -> Item:
+    async def convert(self, ctx, argument) -> Union[Item, List[Item]]:
         try:
             c = await Character.from_json(
                 ctx.bot.get_cog("Adventure").config, ctx.author, ctx.bot.get_cog("Adventure")._daily_bonus,
@@ -1411,6 +1825,16 @@ class EquipmentConverter(Converter):
         except Exception as exc:
             log.exception("Error with the new character sheet", exc_info=exc)
             raise BadArgument
+        if argument.lower() == "all":
+            items = []
+            for slot in ORDER:
+                if slot == "two handed":
+                    continue
+                equipped_item = getattr(c, slot)
+                if not equipped_item:
+                    continue
+                items.append(equipped_item)
+            return items
 
         if argument.lower() in ORDER:
             for slot in ORDER:
@@ -1479,17 +1903,20 @@ class ThemeSetMonterConverter(Converter):
             dipl = float(arguments[3])
             pdef = float(arguments[4])
             mdef = float(arguments[5])
+            cdef = float(arguments[6])
             if any([i < 0 for i in [hp, dipl, pdef, mdef]]):
-                raise BadArgument("HP, Charisma, Magical defence and Physical defence cannot be negative.")
+                raise BadArgument(
+                    "HP, Charisma, Magical defence, Persuasion defence and Physical defence cannot be negative."
+                )
 
-            image = arguments[7]
-            boss = True if arguments[6].lower() == "true" else False
+            image = arguments[8]
+            boss = True if arguments[7].lower() == "true" else False
             if not image:
                 raise Exception
         except BadArgument:
             raise
         except Exception:
-            raise BadArgument("Invalid format, Excepted:\n`theme++name++hp++dipl++pdef++mdef++boss++image`")
+            raise BadArgument("Invalid format, Excepted:\n`theme++name++hp++dipl++pdef++mdef++cdef++boss++image`")
         if "transcended" in name.lower() or "ascended" in name.lower():
             raise BadArgument("You are not worthy.")
         return {
@@ -1498,6 +1925,7 @@ class ThemeSetMonterConverter(Converter):
             "hp": hp,
             "pdef": pdef,
             "mdef": mdef,
+            "cdef": cdef,
             "dipl": dipl,
             "image": image,
             "boss": boss,
@@ -1590,8 +2018,9 @@ class PercentageConverter(Converter):
         return arg
 
 
-def equip_level(char, item):
-    return item.lvl if item.rarity == "event" else max(item.lvl - min(max(char.rebirths // 2 - 1, 0), 50), 1)
+def equip_level(char, item, rebirths=None):
+    level = getattr(char, "rebirths", rebirths)
+    return item.lvl if item.rarity == "event" else max(item.lvl - min(max(level // 2 - 1, 0), 50), 1)
 
 
 def can_equip(char: Character, item: Item):
@@ -1602,7 +2031,7 @@ def can_equip(char: Character, item: Item):
 
 async def calculate_sp(lvl_end: int, c: Character):
     points = c.rebirths * 10
-    async for rc in AsyncIter(range(lvl_end)):
+    async for _loop_counter in AsyncIter(range(lvl_end), steps=100):
         if lvl_end >= 300:
             points += 1
         elif lvl_end >= 200:
@@ -1671,3 +2100,131 @@ async def no_dev_prompt(ctx: commands.Context) -> bool:
         else:
             await ctx.send(_("Did not get a matching confirmation, cancelling."))
             return False
+
+
+class NoExitParser(argparse.ArgumentParser):
+    def error(self, message):
+        raise commands.BadArgument(message=message)
+
+
+class BackpackFilterParser(commands.Converter):
+    async def convert(self, ctx: commands.Context, argument: str) -> Mapping[str, Any]:
+        argument = argument.replace("—", "--")
+        command, *arguments = argument.split(" -- ")
+        if arguments:
+            argument = " -- ".join(arguments)
+        else:
+            command = ""
+        response = {}
+        set_names = set(SET_BONUSES.keys())
+        parser = NoExitParser(description="Backpack Filter Parsing.", add_help=False)
+        parser.add_argument("--str", dest="strength", nargs="+")
+        parser.add_argument("--strength", dest="strength", nargs="+")
+
+        parser.add_argument("--intelligence", dest="intelligence", nargs="+")
+        parser.add_argument("--int", dest="intelligence", nargs="+")
+
+        parser.add_argument("--cha", dest="charisma", nargs="+")
+        parser.add_argument("--charisma", dest="charisma", nargs="+")
+
+        parser.add_argument("--luc", dest="luck", nargs="+")
+        parser.add_argument("--luck", dest="luck", nargs="+")
+
+        parser.add_argument("--dex", dest="dexterity", nargs="+")
+        parser.add_argument("--dexterity", dest="dexterity", nargs="+")
+
+        parser.add_argument("--lvl", dest="level", nargs="+")
+        parser.add_argument("--level", dest="level", nargs="+")
+
+        parser.add_argument("--deg", dest="degrade", nargs="+")
+        parser.add_argument("--degrade", dest="degrade", nargs="+")
+
+        parser.add_argument("--slot", nargs="*", dest="slot", default=ORDER, choices=ORDER)
+
+        parser.add_argument("--rarity", nargs="*", dest="rarity", default=RARITIES, choices=RARITIES)
+
+        parser.add_argument("--set", nargs="*", dest="set", choices=set_names, default=[])
+
+        parser.add_argument("--equip", dest="equippable", action="store_true", default=False)
+        parser.add_argument("--equippable", dest="equippable", action="store_true", default=False)
+
+        parser.add_argument("--delta", dest="delta", action="store_true", default=False)
+        parser.add_argument("--diff", dest="delta", action="store_true", default=False)
+        parser.add_argument("--icase", dest="icase", action="store_true", default=False)
+
+        parser.add_argument("--match", nargs="*", dest="match", default=[])
+
+        if not command:
+            parser.add_argument("command", nargs="*")
+        try:
+            arg = shlex.split(argument, posix=True)
+            vals = vars(parser.parse_args(arg))
+        except argparse.ArgumentError as exc:
+            raise ArgParserFailure(exc.argument_name, exc.message)
+        response["delta"] = vals["delta"]
+        response["equippable"] = vals["equippable"]
+        response["set"] = vals["set"]
+        if vals["rarity"]:
+            response["rarity"] = vals["rarity"]
+        if vals["slot"]:
+            response["slot"] = vals["slot"]
+        response["icase"] = vals["icase"]
+        if vals["match"]:
+            response["match"] = " ".join(vals["match"]).strip()
+
+        response.update(process_argparse_stat(vals, "strength"))
+        response.update(process_argparse_stat(vals, "intelligence"))
+        response.update(process_argparse_stat(vals, "charisma"))
+        response.update(process_argparse_stat(vals, "luck"))
+        response.update(process_argparse_stat(vals, "dexterity"))
+        response.update(process_argparse_stat(vals, "level"))
+        response.update(process_argparse_stat(vals, "degrade"))
+        return response
+
+
+def process_argparse_stat(data: Mapping, stat: str) -> Mapping:
+    temp = {}
+    temp[stat] = {}
+    if variable := data.get(stat):
+        temp[stat] = {}
+        matches = re.findall(ARG_OP_REGEX, " ".join(variable))
+        if matches:
+            operands = [(o, int(v)) for o, v in matches if o]
+            if not operands:
+                exact = [int(v) for o, v in matches if not o]
+                if len(exact) == 1:
+                    temp[stat]["equal"] = exact[0]
+                else:
+                    temp[stat]["max"] = max(exact)
+                    temp[stat]["min"] = min(exact)
+            else:
+                if len(operands) == 1:
+                    o, v = operands[0]
+                    if o in {">"}:
+                        temp[stat]["max"] = float("inf")
+                        temp[stat]["min"] = v
+                    else:
+                        temp[stat]["min"] = float("-inf")
+                        temp[stat]["max"] = v
+                else:
+                    d = defaultdict(set)
+                    for o, v in operands:
+                        d[o].add(v)
+                    temp[stat]["max"] = min(float("inf"), *d["<"])
+                    temp[stat]["min"] = max(float("-inf"), *d[">"])
+    return temp
+
+
+def get_place_holder(slot_name) -> Item:
+    return Item(
+        name="Empty Slot",
+        slot=[slot_name] if slot_name != "two handed" else ["left", "right"],
+        rarity="N/A",
+        att=0,
+        int=0,
+        cha=0,
+        dex=0,
+        luck=0,
+        owned=0,
+        parts=0,
+    )
