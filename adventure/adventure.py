@@ -77,7 +77,7 @@ REBIRTH_STEP = 10
 _SCHEMA_VERSION = 4
 _config: Config = None
 TaxesConverter = get_dict_converter(delims=[" ", ",", ";"])
-
+deposit_allowed = [374596069989810176]
 
 async def smart_embed(ctx, message, success=None, image=None):
     if ctx.guild:
@@ -8230,6 +8230,8 @@ class Adventure(commands.Cog):
     @commands.guild_only()
     async def commands_atransfer_deposit(self, ctx: commands.Context, *, amount: int):
         """Convert bank currency to gold."""
+        if ctx.guild.id not in deposit_allowed:
+            return await ctx.send("You are not allowed to transfer credits.")
         from_conversion_rate = await self.config.to_conversion_rate()
         transferable_amount = amount * from_conversion_rate
         if amount <= 0:
