@@ -5329,7 +5329,7 @@ class Adventure(commands.Cog):
         # Log message
         self.recorded_monster_stats = ""
         await self.send_log(ctx, f"Starting adventure on: {str(datetime.now())}\n")
-        await self.send_log(ctx, f"Starting adventure on: {str(datetime.now())}\n", True)
+        # await self.send_log(ctx, f"Starting adventure on: {str(datetime.now())}\n", True)
 
         adventure_msg = _("You feel adventurous, **{}**?").format(self.escape(ctx.author.display_name))
         try:
@@ -5858,7 +5858,7 @@ class Adventure(commands.Cog):
                         channel = reaction.message.channel
                         log_msg = (
                             f"{user.mention} has answered the {channel.mention} call to arms using {reaction}. "
-                            f"Lets kill [{adventure_obj.challenge}]({link})."
+                            f"Lets kill [ || You wish you could see this <evil laugh> || ]({link})."
                         )
                         await self.send_log(reaction.message, log_msg, False, True)
                         await self._handle_adventure(reaction, user)
