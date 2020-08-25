@@ -7706,7 +7706,8 @@ class Adventure(commands.Cog):
             rewards_list.append(f"**{self.escape(user.display_name)}**")
             log_msg += (
                 f'{user.mention} got {humanize_number(self._rewards[user.id]["cp"])} credits '
-                f'and {humanize_number(self._rewards[user.id]["xp"])} exp. points.\n'
+                f'and {humanize_number(self._rewards[user.id]["xp"])} exp. points '
+                f'and {"no" if self._rewards[user.id]["special"] is False else self._rewards[user.id]["special"]} treasure.\n'
             )
 
         await self.send_log(ctx, log_msg)
