@@ -8485,10 +8485,10 @@ class Adventure(commands.Cog):
         private_channel = log_channels["private"]
         public_channel = log_channels["public"]
         if private and private_channel is None:
-            log.info("Private log channel not setup.")
+            # log.info("Private log channel not setup.")
             return
         elif public_channel is None:
-            log.info("Public log channel not setup.")
+            # log.info("Public log channel not setup.")
             return
         try:
             channel = await self.bot.fetch_channel(private_channel if private else public_channel)
