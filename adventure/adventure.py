@@ -79,7 +79,10 @@ REBIRTH_STEP = 10
 _SCHEMA_VERSION = 4
 _config: Config = None
 TaxesConverter = get_dict_converter(delims=[" ", ",", ";"])
+
+# Added
 deposit_allowed = [374596069989810176, 580455191376166943]
+
 
 async def smart_embed(ctx, message, success=None, image=None):
     if ctx.guild:
@@ -380,6 +383,7 @@ class Adventure(commands.Cog):
             "rebirth_cost": 100.0,
             "disallow_withdraw": True,
             "max_allowed_withdraw": 50000,
+            # Added
             "log_channels": {"private": None, "public": None},
             "grindsquad": list(),
             "grindsquad_answered": list(),
@@ -421,6 +425,7 @@ class Adventure(commands.Cog):
         log.debug("Creating Task")
         self._init_task = self.bot.loop.create_task(self.initialize())
         self._ready_event = asyncio.Event()
+        # Added
         self.recorded_monster_stats = {}
 
     async def cog_before_invoke(self, ctx: commands.Context):
@@ -5369,6 +5374,7 @@ class Adventure(commands.Cog):
             # Only let the bot owner specify a specific challenge
             challenge = None
 
+        # Added
         # Log message
         self.recorded_monster_stats[ctx.guild.id] = ""
         await self.send_log(ctx, f"Starting adventure on: {str(datetime.now())}\n")
@@ -5465,6 +5471,8 @@ class Adventure(commands.Cog):
             return choice
         possible_monsters = []
         stat_range = self._adv_results.get_stat_range(ctx)
+
+        # Added
         log_msg = "Selecting a monster:\n"
         log_msg += f"Stat range is: {str(stat_range)}\n"
         if stat_range["max_stat"] > 0:
@@ -5501,6 +5509,8 @@ class Adventure(commands.Cog):
             choice = random.choice(list(monsters.keys()) * 3)
         else:
             choice = random.choice(possible_monsters)
+
+        # Added
         log_msg += (
             f"Selected monster: {choice} with base stats :"
             f"{monsters[choice]['hp'] if (stat_range['stat_type'] == 'hp') else monsters[choice]['dipl']} "
@@ -5515,6 +5525,7 @@ class Adventure(commands.Cog):
         self.recorded_monster_stats[ctx.guild.id] = log_msg
         if await self.config.easy_mode():
             await self.send_log(ctx, log_msg, True)
+
         return choice
 
     def _dynamic_monster_stats(self, ctx: commands.Context, choice: MutableMapping):
@@ -5647,8 +5658,11 @@ class Adventure(commands.Cog):
         monster_roster, monster_stats, transcended = await self.update_monster_roster(ctx.author)
         if not challenge or challenge not in monster_roster:
             challenge = await self.get_challenge(ctx, monster_roster)
+
+        # Added
         else:
             await self.send_log(ctx, f"Administratively summoned {challenge} by {ctx.author.mention}")
+
         if attribute and attribute.lower() in self.ATTRIBS:
             attribute = attribute.lower()
         else:
@@ -5907,14 +5921,17 @@ class Adventure(commands.Cog):
                     (timer, done, sremain) = self._adventure_countdown[guild.id]
                     if sremain > 3:
 
+                        # Added
                         # Log message
                         adventure_obj = self._sessions[guild.id]
                         link = adventure_obj.message.jump_url
                         channel = reaction.message.channel
-                        if (adventure_obj.easy_mode or adventure_obj.exposed):
+                        if adventure_obj.easy_mode or adventure_obj.exposed:
                             monster_to_show = f"[{adventure_obj.challenge}]({link})"
                         else:
-                            monster_to_show = "|| [ You wish you could see this <:PandaDevil:714209082176831508>  ]({link}) ||"
+                            monster_to_show = (
+                                "|| [ You wish you could see this <:PandaDevil:714209082176831508>  ]({link}) ||"
+                            )
                         log_msg = (
                             f"{user.mention} has answered the {channel.mention} call to arms using {reaction}. "
                             f"Lets kill {monster_to_show}."
@@ -6077,7 +6094,9 @@ class Adventure(commands.Cog):
     async def _result(self, ctx: commands.Context, message: discord.Message):
         if ctx.guild.id not in self._sessions:
             return
+
         log_msg = ""
+
         calc_msg = await ctx.send(_("Calculating..."))
         attack = 0
         diplomacy = 0
@@ -6205,6 +6224,8 @@ class Adventure(commands.Cog):
         challenge_attrib = session.attribute
         hp = int(session.monster_modified_stats["hp"] * self.ATTRIBS[challenge_attrib][0] * session.monster_stats)
         dipl = int(session.monster_modified_stats["dipl"] * self.ATTRIBS[challenge_attrib][1] * session.monster_stats)
+
+        # Added
         await self.send_log(ctx, self.recorded_monster_stats[ctx.guild.id])
         log_msg += "Calculating stats:\n"
         log_msg += (
@@ -7719,8 +7740,10 @@ class Adventure(commands.Cog):
             else:
                 self._rewards[user.id]["special"] = False
             rewards_list.append(f"**{self.escape(user.display_name)}**")
+
+            # Added
             log_msg += (
-                f'{user.mention} got {humanize_number(self._rewards[user.id]["cp"])} credits '
+                f'{user.mention} got {humanize_number(self._rewards[user.id]["cp"])} {currency_name} '
                 f'and {humanize_number(self._rewards[user.id]["xp"])} exp. points '
                 f'and {"no" if self._rewards[user.id]["special"] is False else self._rewards[user.id]["special"]} treasure.\n'
             )
@@ -8276,8 +8299,11 @@ class Adventure(commands.Cog):
     @commands.guild_only()
     async def commands_atransfer_deposit(self, ctx: commands.Context, *, amount: int):
         """Convert bank currency to gold."""
+
+        # Added
         if ctx.guild.id not in deposit_allowed:
             return await smart_embed(ctx, "You are not allowed to transfer credits in this server.")
+
         from_conversion_rate = await self.config.to_conversion_rate()
         transferable_amount = amount * from_conversion_rate
         if amount <= 0:
@@ -8468,6 +8494,8 @@ class Adventure(commands.Cog):
             ),
         )
 
+    # -------------------------------------------------
+    # Added
     @commands.group(autohelp=False)
     @commands.guild_only()
     @commands.admin()
@@ -8572,6 +8600,8 @@ class Adventure(commands.Cog):
             )
             return await smart_embed(ctx, message)
 
+    # -------------------------------------------------
+
     @commands.command(name="mysets")
     async def commands_mysets(self, ctx: commands.Context):
         """Show your sets."""
@@ -8609,28 +8639,30 @@ class Adventure(commands.Cog):
             source=SimpleSource(msgs), delete_message_after=True, clear_reactions_after=True, timeout=60,
         ).start(ctx=ctx)
 
-
-
-#--------------------------------------------------------------------------------------------------------------------
-# Old code
+    # --------------------------------------------------------------------------------------------------------------------
+    # Old code
+    # Added
     @commands.group(name="grindsquad", autohelp=False)
     @commands.guild_only()
     async def _grindsquad(self, ctx):
         if ctx.invoked_subcommand is not None:
             return
         if ctx.guild.id not in self._sessions:
-            return await smart_embed(ctx,
-                                    (
-                                        "Umm.... I see no adventures running. "
-                                        "You do not have perms to call upon grindsquad for no reason."
-                                    ),
-                                    False
+            return await smart_embed(
+                ctx,
+                (
+                    "Umm.... I see no adventures running. "
+                    "You do not have perms to call upon grindsquad for no reason."
+                ),
+                False,
             )
 
         adventure_obj = self._sessions[ctx.guild.id]
         link = adventure_obj.message.jump_url
         channel = adventure_obj.message.channel
-        challenge = adventure_obj.challenge if (adventure_obj.easy_mode or adventure_obj.exposed) else _("Unknown monster")
+        challenge = (
+            adventure_obj.challenge if (adventure_obj.easy_mode or adventure_obj.exposed) else _("Unknown monster")
+        )
         challenge_link = f"[{challenge}]({link})"
 
         if ctx.channel.id != channel.id:
@@ -8651,7 +8683,8 @@ class Adventure(commands.Cog):
         else:
             msg += humanize_list(to_ping)
 
-        msg += (f" in {channel.mention} to kill a "
+        msg += (
+            f" in {channel.mention} to kill a "
             f"{challenge if len(to_ping) != 0 else challenge_link}."
             "<:PandaKiller:703297599100420188> <:PandaKiller:703297599100420188> <:PandaKiller:703297599100420188>"
         )
@@ -8664,8 +8697,11 @@ class Adventure(commands.Cog):
     async def _grindsquad_here(self, ctx):
 
         if ctx.guild.id not in self._sessions:
-            return await smart_embed(ctx, "Umm.... I see no adventures running."
-                "What are you doing here?\nIf you are lost try !where.\nIf you're still lost do !dad and you shall receive help.")
+            return await smart_embed(
+                ctx,
+                "Umm.... I see no adventures running."
+                "What are you doing here?\nIf you are lost try !where.\nIf you're still lost do !dad and you shall receive help.",
+            )
 
         adventure_obj = self._sessions[ctx.guild.id]
         channel = adventure_obj.message.channel
@@ -8685,30 +8721,33 @@ class Adventure(commands.Cog):
             if user_has_reacted:
                 break
         if not user_has_reacted:
-            return await smart_embed(ctx, f"You have not reacted to adventure.\n"
-            f"How will I ever know who to tag if you lie to me.\n"
-            f"Now be good, {ctx.author.mention} , and react to [{challenge}]({link}) before the timer runs out.",
-            False
+            return await smart_embed(
+                ctx,
+                f"You have not reacted to adventure.\n"
+                f"How will I ever know who to tag if you lie to me.\n"
+                f"Now be good, {ctx.author.mention} , and react to [{challenge}]({link}) before the timer runs out.",
+                False,
             )
 
         if ctx.author.id not in (await self.config.guild(ctx.guild).grindsquad()):
-            return await smart_embed(ctx, f"You are currently not in grindsquad. Please contact moderators if you want to be added.\n" +
-                f"{ctx.author.mention} has already answered the {channel.mention} call to arms. Lets kill [{challenge}]({link}).",
-                True
+            return await smart_embed(
+                ctx,
+                f"You are currently not in grindsquad. Please contact moderators if you want to be added.\n"
+                + f"{ctx.author.mention} has already answered the {channel.mention} call to arms. Lets kill [{challenge}]({link}).",
+                True,
             )
 
         if ctx.author.id in await self.config.guild(ctx.guild).grindsquad_answered():
-            msg =("You have already answered the call to adventure. Thank you for your time. 🙂 "
-            )
+            msg = "You have already answered the call to adventure. Thank you for your time. 🙂 "
         else:
             self.grindsquad_answered.append(ctx.author.id)
-            msg =  f"{ctx.author.mention} has answered the {channel.mention} call to arms. Lets kill [{challenge}]({link})."
+            msg = f"{ctx.author.mention} has answered the {channel.mention} call to arms. Lets kill [{challenge}]({link})."
 
         await smart_embed(ctx, msg, True)
 
     @_grindsquad.command(name="add")
     @commands.mod_or_permissions(manage_guild=True)
-    async def _grindsquad_add(self, ctx, *users:discord.User):
+    async def _grindsquad_add(self, ctx, *users: discord.User):
         async with self.config.guild(ctx.guild).grindsquad() as to_ping:
             for user in users:
                 if user.id not in to_ping:
@@ -8717,11 +8756,12 @@ class Adventure(commands.Cog):
 
     @_grindsquad.command(name="remove")
     @commands.mod_or_permissions(manage_guild=True)
-    async def _grindsquad_remove(self, ctx, *users:discord.User):
+    async def _grindsquad_remove(self, ctx, *users: discord.User):
         async with self.config.guild(ctx.guild).grindsquad() as to_ping:
             for user in users:
                 if user.id in to_ping:
                     to_ping.remove(user.id)
         await ctx.tick()
 
-#------------------------------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------------------------------
