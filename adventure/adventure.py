@@ -8682,6 +8682,10 @@ class Adventure(commands.Cog):
         msg = f"{ctx.author.mention} is a nab and is begging for the help of "
 
         to_ping = copy(await self.config.guild(ctx.guild).grindsquad())
+        # clear members who have left
+        to_ping = [i for i in to_ping if self.bot.get_user(i) is not None]
+        await self.config.guild(ctx.guild).grindsquad.set(to_ping)
+
         answered = await self.config.guild(ctx.guild).grindsquad_answered()
         to_ping = [self.bot.get_user(i).mention for i in to_ping if i not in answered]
 
