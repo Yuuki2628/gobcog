@@ -5638,6 +5638,7 @@ class Adventure(commands.Cog):
             failed = True
 
         transcended_chance = random.randint(0, 10)
+        log_msg = f"Transcended_chance is {transcended_chance} transcended is {transcended_chance == 5}."
         theme = await self.config.theme()
         extra_monsters = await self.config.themes.all()
         extra_monsters = extra_monsters.get(theme, {}).get("monsters", {})
@@ -5655,6 +5656,7 @@ class Adventure(commands.Cog):
                 monster_stats = 2
             else:
                 monster_stats = 1
+        await self.send_log(ctx, log_msg)
         return monsters, monster_stats, transcended
 
     async def _simple(self, ctx: commands.Context, adventure_msg, challenge: str = None, attribute: str = None):
