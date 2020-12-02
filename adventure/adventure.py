@@ -5628,7 +5628,7 @@ class Adventure(commands.Cog):
         choice["cdef"] = new_cdef
         return choice
 
-    async def update_monster_roster(self, user):
+    async def update_monster_roster(self, ctx, user):
 
         try:
             c = await Character.from_json(self.config, user, self._daily_bonus)
@@ -5663,7 +5663,7 @@ class Adventure(commands.Cog):
         self.bot.dispatch("adventure", ctx)
         text = ""
         easy_mode = await self.config.easy_mode()
-        monster_roster, monster_stats, transcended = await self.update_monster_roster(ctx.author)
+        monster_roster, monster_stats, transcended = await self.update_monster_roster(ctx, ctx.author)
         if not challenge or challenge not in monster_roster:
             challenge = await self.get_challenge(ctx, monster_roster)
 
