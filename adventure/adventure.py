@@ -8696,8 +8696,8 @@ class Adventure(commands.Cog):
             msg += humanize_list(to_ping)
         
         pandakiller_emote = ""
-        for guild in bot.guilds:
-            for emoji in guild.emojis:
+        for guild in self.bot.guilds:
+            for emoji in ctx.guild.emojis:
                 if emoji.name.lower() == "pandakiller":
                     pandakiller_emote = f"{emoji}"
         msg += (
