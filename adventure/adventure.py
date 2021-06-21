@@ -8694,11 +8694,16 @@ class Adventure(commands.Cog):
             msg += "adventure players"
         else:
             msg += humanize_list(to_ping)
-
+        
+        pandakiller_emote = ""
+        for guild in bot.guilds:
+            for emoji in guild.emojis:
+                if emoji.name.lower() == "pandakiller":
+                    pandakiller_emote = f"{emoji}"
         msg += (
             f" in {channel.mention} to kill a "
             f"{challenge if len(to_ping) != 0 else challenge_link}."
-            "<:PandaKiller:703297599100420188> <:PandaKiller:703297599100420188> <:PandaKiller:703297599100420188>"
+            f"{pandakiller_emote} {pandakiller_emote} {pandakiller_emote}"
         )
         if len(to_ping) > 0:
             await ctx.send(msg)
