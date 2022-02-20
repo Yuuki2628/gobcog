@@ -2117,8 +2117,15 @@ class PercentageConverter(Converter):
 
 def equip_level(char, item, rebirths=None):
     level = getattr(char, "rebirths", rebirths)
-    return item.lvl if item.rarity == "event" else max(item.lvl - min(max(level // 2 - 1, 0), 50), 1)
 
+    if item.rarity == "event":
+        level = item.lvl
+    elif item.rarity == "set":
+        level = int(max(item.lvl - min(max(level // 2 - 1, 0), 50), 1)//2)
+    else
+        level = max(item.lvl - min(max(level // 2 - 1, 0), 50), 1)
+        
+    return level
 
 def can_equip(char: Character, item: Item):
     if char.user.id in DEV_LIST:

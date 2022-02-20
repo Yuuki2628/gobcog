@@ -13,6 +13,7 @@ from math import ceil
 from operator import itemgetter
 from types import SimpleNamespace
 from typing import List, Literal, MutableMapping, Optional, Union
+import redbot.core.config
 
 import discord
 from beautifultable import ALIGN_LEFT, BeautifulTable
@@ -8782,3 +8783,14 @@ class Adventure(commands.Cog):
 
 
 # ------------------------------------------------------------------------------------------------------
+    @commands.command(name="adventure_reset_all")
+    @commands.bot_has_permissions(add_reactions=True)
+    @commands.is_owner()
+    async def _reset_all(self, ctx: commands.Context):
+        """[Dev] Resets the after-adventure cooldown in this server."""
+        if not await no_dev_prompt(ctx):
+            return
+        await ctx.send("Deleting all adventure data")
+        await self.config.clear_all(self)
+        await ctx.tick()
+        return await ctx.send("Successfully deleted all adventure data")

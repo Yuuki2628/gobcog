@@ -110,9 +110,12 @@
     "Golad, Twilight Of Aspects": {"slot": ["left"], "set": "Fangs of the Father", "parts": 2, "att": 0, "cha": 90, "int": 0, "dex": 25, "luck": 0, "rarity": "set"},
     "Tiriosh, Nightmare Of Ages": {"slot": ["right"], "set": "Fangs of the Father", "parts": 2, "att": 0, "cha": 90, "int": 0, "dex": 25, "luck": 0, "rarity": "set"},
 
-    "Vita-Charged Titanshard": {"slot": ["charm"], "set": "Titanic Empowerment", "parts": 2, "att": 60, "cha": 0, "int": 0, "dex": 0, "luck": 0, "rarity": "set"},
-    "Void-Twisted Titanshard": {"slot": ["ring"], "set": "Titanic Empowerment", "parts": 2, "att": 60, "cha": 0, "int": 0, "dex": 0, "luck": 0, "rarity": "set"},
-
+    "Vita-Charged Titanshard": {"slot": ["charm"], "set": "Titanic Empowerment", "parts": 2, "att": 60, "cha": 0, "int": 0, "dex": 20, "luck": 30, "rarity": "set"},
+    "Void-Twisted Titanshard": {"slot": ["ring"], "set": "Titanic Empowerment", "parts": 2, "att": 60, "cha": 0, "int": 0, "dex": 30, "luck": 20, "rarity": "set"},
+        
+    "Eternal Wizard Hat": {"slot": ["head"], "set": "Eternal Wizard", "parts": 2, "att": 0, "cha": 0, "int": 60, "dex": 20, "luck": 30, "rarity": "set"},
+    "Eternal Blazing Robe": {"slot": ["chest"], "set": "Eternal Wizard", "parts": 2, "att": 0, "cha": 0, "int": 60, "dex": 30, "luck": 20, "rarity": "set"},
+        
     "Demonbane Necklace": {"slot": ["neck"], "set": "Demonbane Armor", "parts": 6, "att": 15, "cha": 0, "int": 0, "dex": 0, "luck": 12, "rarity": "set"},
     "Demonbane Katana": {"slot": ["left", "right"], "set": "Demonbane Armor", "parts": 6, "att": 20, "cha": 0, "int": 0, "dex": 0, "luck": 12, "rarity": "set"},
     "Demonbane Sabatons": {"slot": ["boots"], "set": "Demonbane Armor", "parts": 6, "att": 25, "cha": 0, "int": 0, "dex": 0, "luck": 12, "rarity": "set"},
