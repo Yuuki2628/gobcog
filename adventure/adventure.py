@@ -8790,7 +8790,7 @@ class Adventure(commands.Cog):
         """[Dev] Resets the after-adventure cooldown in this server."""
         if not await no_dev_prompt(ctx):
             return
-        await ctx.send("Deleting all adventure data")
-        await self.config.clear_all(self)
+        await ctx.send("Deleting all adventure data...")
+        await self.config.clear_all()
         await ctx.tick()
-        return await ctx.send("Successfully deleted all adventure data")
+        return await ctx.send("Successfully deleted all adventure data.")
