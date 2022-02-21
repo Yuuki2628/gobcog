@@ -3547,17 +3547,6 @@ class Adventure(commands.Cog):
                 ),
                 "cooldown": time.time(),
             },
-            "Ranger": {
-                "name": _("Ranger"),
-                "ability": False,
-                "desc": _(
-                    "Rangers can gain a special pet, which can find items and give "
-                    "reward bonuses.\nUse the pet command to see pet options."
-                ),
-                "pet": {},
-                "cooldown": time.time(),
-                "catch_cooldown": time.time(),
-            },
             "Bard": {
                 "name": _("Bard"),
                 "ability": False,
@@ -3586,7 +3575,7 @@ class Adventure(commands.Cog):
                 _(
                     "So you feel like taking on a class, **{author}**?\n"
                     "Available classes are: Tinkerer, Berserker, "
-                    "Wizard, Cleric, Ranger, Psychic and Bard.\n"
+                    "Wizard, Cleric, Psychic and Bard.\n"
                     "Use `{prefix}heroclass name-of-class` to choose one."
                 ).format(author=self.escape(ctx.author.display_name), prefix=ctx.prefix),
             )
