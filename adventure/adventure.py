@@ -5562,9 +5562,9 @@ class Adventure(commands.Cog):
             percent_cdef = random.randrange(1, 15) / 100
             monster_cdef = choice["cdef"] * percent_cdef
         elif win_percentage >= 0.35:
-            monster_hp_min = int(choice["hp"] * 0.9)
+            monster_hp_min = int(choice["hp"] * 0.8)
             monster_hp_max = int(choice["hp"])
-            monster_diplo_min = int(choice["dipl"] * 0.9)
+            monster_diplo_min = int(choice["dipl"] * 0.8)
             monster_diplo_max = int(choice["dipl"])
             percent_pdef = random.randrange(1, 15) / 100
             monster_pdef = choice["pdef"] * percent_pdef * -1
@@ -5573,10 +5573,10 @@ class Adventure(commands.Cog):
             percent_cdef = random.randrange(1, 15) / 100
             monster_cdef = choice["cdef"] * percent_cdef * -1
         elif win_percentage >= 0.15:
-            monster_hp_min = int(choice["hp"] * 0.8)
-            monster_hp_max = int(choice["hp"] * 0.9)
-            monster_diplo_min = int(choice["dipl"] * 0.8)
-            monster_diplo_max = int(choice["dipl"] * 0.9)
+            monster_hp_min = int(choice["hp"] * 0.4)
+            monster_hp_max = int(choice["hp"] * 0.6)
+            monster_diplo_min = int(choice["dipl"] * 0.4)
+            monster_diplo_max = int(choice["dipl"] * 0.6)
             percent_pdef = random.randrange(15, 25) / 100
             monster_pdef = choice["pdef"] * percent_pdef * -1
             percent_mdef = random.randrange(15, 25) / 100
@@ -5584,10 +5584,10 @@ class Adventure(commands.Cog):
             percent_cdef = random.randrange(15, 25) / 100
             monster_cdef = choice["cdef"] * percent_cdef * -1
         else:
-            monster_hp_min = int(choice["hp"] * 0.6)
-            monster_hp_max = int(choice["hp"] * 0.8)
-            monster_diplo_min = int(choice["dipl"] * 0.6)
-            monster_diplo_max = int(choice["dipl"] * 0.8)
+            monster_hp_min = int(choice["hp"] * 0.3)
+            monster_hp_max = int(choice["hp"] * 0.5)
+            monster_diplo_min = int(choice["dipl"] * 0.3)
+            monster_diplo_max = int(choice["dipl"] * 0.5)
             percent_pdef = random.randrange(25, 30) / 100
             monster_pdef = choice["pdef"] * percent_pdef * -1
             percent_mdef = random.randrange(25, 30) / 100
