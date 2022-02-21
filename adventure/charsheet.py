@@ -2122,7 +2122,7 @@ def equip_level(char, item, rebirths=None):
         level = item.lvl
     elif item.rarity == "set":
         level = int(max(item.lvl - min(max(level // 2 - 1, 0), 50), 1)//2)
-    else
+    else:
         level = max(item.lvl - min(max(level // 2 - 1, 0), 50), 1)
         
     return level
