@@ -8390,11 +8390,13 @@ class Adventure(commands.Cog):
             await smart_embed(
                 ctx, _("{author.mention} You can't withdraw 0 or negative values.").format(author=ctx.author),
             )
+            ctx.command.reset_cooldown(ctx)
             return
         configs = await self.config.all()
         from_conversion_rate = configs.get("from_conversion_rate")
         transferable_amount = amount // from_conversion_rate
         if not await bank.can_spend(member=ctx.author, amount=amount):
+            ctx.command.reset_cooldown(ctx)
             return await smart_embed(
                 ctx,
                 _("{author.mention} you don't have enough {name}.").format(
@@ -8402,6 +8404,7 @@ class Adventure(commands.Cog):
                 ),
             )
         if transferable_amount > max_allowed_withdraw:
+            ctx.command.reset_cooldown(ctx)
             return await smart_embed(
                 ctx,
                 _("{author.mention} I can't allow you to transfer {amount} to {bank}.").format(
