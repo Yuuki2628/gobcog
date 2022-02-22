@@ -5359,7 +5359,7 @@ class Adventure(commands.Cog):
 
         allowed_users = [
             295275466703503372, #Yuuki
-            218438342193315840 #Link471
+            218438342193315840, #Link471
             552920310333308938, #MAYURESH
         ]
         if challenge and not (self.is_dev(ctx.author) or await ctx.bot.is_owner(ctx.author) or ctx.author.id in allowed_users):
