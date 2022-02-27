@@ -8255,7 +8255,7 @@ class Adventure(commands.Cog):
         """Get some free gold."""
         author = ctx.author
         adventure_credits_name = await bank.get_currency_name(ctx.guild)
-        amount = 500  # Make Customizable?
+        amount = 10000  # Make Customizable?
         try:
             await bank.deposit_credits(author, amount)
         except BalanceTooHigh as exc:
