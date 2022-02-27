@@ -8784,7 +8784,7 @@ class Adventure(commands.Cog):
     @commands.bot_has_permissions(add_reactions=True)
     @commands.is_owner()
     async def _reset_all(self, ctx: commands.Context):
-        """[Dev] Resets the daventure data."""
+        """[Dev] Resets the aventure data."""
         if not await no_dev_prompt(ctx):
             return
         await ctx.send("Deleting all adventure data...")
