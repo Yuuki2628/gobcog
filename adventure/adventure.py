@@ -8389,7 +8389,9 @@ class Adventure(commands.Cog):
 
         championr = discord.utils.get(ctx.guild.roles,name="Champion")
         legendary = discord.utils.get(ctx.guild.roles,name="LeGeNDary")
-        if championr in ctx.author.roles:
+        bilr1 = discord.utils.get(ctx.guild.roles,name="OG Billionaire")
+        bilr2 = discord.utils.get(ctx.guild.roles,name="Billionaire")
+        if (championr in ctx.author.roles) or (bilr1 in ctx.author.roles) or (bilr2 in ctx.author.roles):
             max_allowed_withdraw = max_allowed_withdraw * 2
         elif legendary in ctx.author.roles:
             max_allowed_withdraw = max_allowed_withdraw * 1.5
