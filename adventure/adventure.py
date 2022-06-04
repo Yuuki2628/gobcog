@@ -7700,8 +7700,8 @@ class Adventure(commands.Cog):
             except Exception as exc:
                 log.exception("Error with the new character sheet", exc_info=exc)
                 continue
-            userxp = int(xp + (xp * 0.5 * c.rebirths) + max((xp * 0.1 * min(250, c._int / 10)), 0)) * 40
-            usercp = int(cp + max((cp * 0.1 * min(1000, (c._luck + c._att) / 10)), 0)) * 40
+            userxp = int(xp + (xp * 0.5 * c.rebirths) + max((xp * 0.1 * min(250, c._int / 10)), 0)) * 30
+            usercp = int(cp + max((cp * 0.1 * min(1000, (c._luck + c._att) / 10)), 0)) * 20
             userxp = int(userxp * (20 + c.gear_set_bonus.get("xpmult", 1) + daymult))
             usercp = int(usercp * (20 + c.gear_set_bonus.get("cpmult", 1) + daymult))
             newxp += userxp
@@ -8386,6 +8386,15 @@ class Adventure(commands.Cog):
             )
             ctx.command.reset_cooldown(ctx)
             return
+
+        championr = discord.utils.get(ctx.guild.roles,name="Champion")
+        legendary = discord.utils.get(ctx.guild.roles,name="LeGeNDary")
+        if championr in ctx.author.roles:
+            max_allowed_withdraw = max_allowed_withdraw * 2
+        elif legendary in ctx.author.roles:
+            max_allowed_withdraw = max_allowed_withdraw * 1.5
+
+
         configs = await self.config.all()
         from_conversion_rate = configs.get("from_conversion_rate")
         transferable_amount = amount // from_conversion_rate
