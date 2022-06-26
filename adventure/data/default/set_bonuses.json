@@ -1,9 +1,9 @@
 {
     "The Supreme One" : [
-        {"parts": 3, "att": 20, "cha": 20, "int": 40, "dex": 20, "luck": 35, "statmult": 1.1, "xpmult": 1.0, "cpmult": 1.1},
-        {"parts": 7, "att": 30, "cha": 30, "int": 60, "dex": 30, "luck": 50, "statmult": 1.2, "xpmult": 1.0, "cpmult": 1.5},
-        {"parts": 10, "att": 40, "cha": 40, "int": 80, "dex": 40, "luck": 65, "statmult": 1.5, "xpmult": 1.0, "cpmult": 1.0},
-        {"parts": 11, "att": 200, "cha": 200, "int": 200, "dex": 120, "luck": 60, "statmult": 2.0, "xpmult": 3.0, "cpmult": 1.0}
+        {"parts": 3, "att": 20, "cha": 20, "int": 20, "dex": 20, "luck": 20, "statmult": 1.0, "xpmult": 1.0, "cpmult": 1.0},
+        {"parts": 7, "att": 20, "cha": 20, "int": 20, "dex": 20, "luck": 20, "statmult": 1.5, "xpmult": 1.0, "cpmult": 1.5},
+        {"parts": 10, "att": 60, "cha": 60, "int": 60, "dex": 60, "luck": 60, "statmult": 1.5, "xpmult": 1.0, "cpmult": 1.0},
+        {"parts": 11, "att": 200, "cha": 200, "int": 200, "dex": 120, "luck": 60, "statmult": 2.0, "xpmult": 3.0, "cpmult": 1.5}
     ],
     "Ainz Ooal Gown" : [
         {"parts": 3, "att": 0, "cha": 0, "int": 0, "dex": 0, "luck": 0, "statmult": 1.0, "xpmult": 0.5, "cpmult": 1.1},
