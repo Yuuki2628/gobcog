@@ -3786,7 +3786,6 @@ class Adventure(commands.Cog):
 
     @commands.command()
     @commands.bot_has_permissions(add_reactions=True)
-    @commands.cooldown(rate=1, per=4, type=commands.BucketType.user)
     async def loot(self, ctx: commands.Context, box_type: str = None, number: int = 1):
         """This opens one of your precious treasure chests.
 
@@ -7434,10 +7433,8 @@ class Adventure(commands.Cog):
         elif chest_type == "set":
             if roll <= INITIAL_MAX_ROLL * 0.55:  # 55% to roll set
                 rarity = "set"
-            elif roll <= INITIAL_MAX_ROLL * 0.87:
-                rarity = "ascended"  # 45% to roll legendary
             else:
-                rarity = "legendary"  # 45% to roll legendary
+                rarity = "ascended"  # 45% to roll legendary
 
         return await self._genitem(rarity)
 
